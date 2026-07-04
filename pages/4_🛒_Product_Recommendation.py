@@ -1,97 +1,85 @@
 import streamlit as st
-import pandas as pd
-from sklearn.metrics.pairwise import cosine_similarity
+from joblib import load
+import os
 
 st.set_page_config(page_title="Product Recommendation", page_icon="🛒")
 
 st.title("🛒 Product Recommendation")
-st.caption("Recommend products based on customer purchase history")
+st.caption("Get similar products based on customer purchase behaviour")
 
-# ---------------------------------------------------
-# Load Dataset
-# ---------------------------------------------------
+# ----------------------------------------------------
+# Check Model Files
+# ----------------------------------------------------
 
-@st.cache_data
-def load_data():
-    df = pd.read_csv("clean_online_retail.csv")
+SIMILARITY_FILE = "models/product_similarity.joblib"
+CUSTOMER_FILE = "models/customer_product.joblib"
 
-    df = df.dropna(subset=["CustomerID", "Description"])
+if not os.path.exists(SIMILARITY_FILE):
+    st.error("❌ product_similarity.joblib not found.")
+    st.stop()
 
-    df["CustomerID"] = df["CustomerID"].astype(str)
+if not os.path.exists(CUSTOMER_FILE):
+    st.error("❌ customer_product.joblib not found.")
+    st.stop()
 
-    return df
-
-
-df = load_data()
-
-# ---------------------------------------------------
-# Build Recommendation Model
-# ---------------------------------------------------
+# ----------------------------------------------------
+# Load Models
+# ----------------------------------------------------
 
 @st.cache_resource
-def build_similarity(df):
+def load_models():
 
-    customer_product = pd.pivot_table(
-        df,
-        index="CustomerID",
-        columns="Description",
-        values="Quantity",
-        aggfunc="sum",
-        fill_value=0
-    )
+    similarity_df = load(SIMILARITY_FILE)
+    customer_product = load(CUSTOMER_FILE)
 
-    product_matrix = customer_product.T
+    return similarity_df, customer_product
 
-    similarity = cosine_similarity(product_matrix)
+similarity_df, customer_product = load_models()
 
-    similarity_df = pd.DataFrame(
-        similarity,
-        index=product_matrix.index,
-        columns=product_matrix.index
-    )
+product_list = sorted(customer_product.columns.tolist())
 
-    return similarity_df
-
-
-with st.spinner("Building recommendation model... (First run may take 20-40 seconds)"):
-
-    similarity_df = build_similarity(df)
-
-# ---------------------------------------------------
+# ----------------------------------------------------
 # Product Selection
-# ---------------------------------------------------
-
-products = sorted(similarity_df.index.tolist())
+# ----------------------------------------------------
 
 selected_product = st.selectbox(
     "Select a Product",
-    products
+    product_list
 )
 
-# ---------------------------------------------------
-# Recommend
-# ---------------------------------------------------
+# ----------------------------------------------------
+# Recommendation Function
+# ----------------------------------------------------
 
 def recommend(product):
 
-    similar_products = (
-        similarity_df[product]
+    if product not in similarity_df.index:
+        return []
+
+    recommendations = (
+        similarity_df.loc[product]
         .sort_values(ascending=False)
-        .drop(product)
-        .head(5)
+        .iloc[1:6]
+        .index
+        .tolist()
     )
 
-    return similar_products.index.tolist()
+    return recommendations
 
-# ---------------------------------------------------
+# ----------------------------------------------------
 # Button
-# ---------------------------------------------------
+# ----------------------------------------------------
 
 if st.button("Get Recommendations"):
 
     recommendations = recommend(selected_product)
 
-    st.success("Top 5 Recommended Products")
+    if len(recommendations) == 0:
+        st.warning("No recommendations found.")
 
-    for i, item in enumerate(recommendations, start=1):
-        st.write(f"**{i}. {item}**")
+    else:
+
+        st.success("Top 5 Recommended Products")
+
+        for i, product in enumerate(recommendations, 1):
+            st.write(f"**{i}. {product}**")

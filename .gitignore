@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+
+models/product_similarity.pkl
+models/customer_product.pkl
